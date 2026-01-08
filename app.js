@@ -29,7 +29,7 @@ const APP_CONFIG = {
 };
 
 // ============ PUSH NOTIFICATIONS CONFIG ============
-const PUSH_SERVER_URL = 'https://your-server-url.com';
+const PUSH_SERVER_URL = 'https://edjazza-production.up.railway.app';
 const VAPID_PUBLIC_KEY = 'BIC3p5grn2iKUow3xCpSyu8OQbElewSSYWd1eK4y54UiqSZwtRse5vxrP9XBMnQHhS8be5g0dcERMp1jgU5Nwhw';
 
 // ✅ دالة الاشتراك في Push Notifications
