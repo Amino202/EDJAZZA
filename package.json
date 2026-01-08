@@ -5,8 +5,7 @@
     "node": "20.x"
   },
   "scripts": {
-    "start": "cd backend && npm start",
-          "postinstall": "cd backend && npm install"
+    "start": "npm --prefix backend install && npm --prefix backend start"
   },
   "dependencies": {},
   "devDependencies": {}
