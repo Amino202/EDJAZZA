@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0284c7">
+    <meta name="description" content="تطبيق متتبع الإجازات الشخصية - تطبيق ويب تقدمي PWA">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="اجازة">
+    <meta name="application-name" content="اجازة">
+    <meta name="msapplication-TileColor" content="#0284c7">
+    
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+    <link rel="icon" type="image/png" href="icons/icon-32x32.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16x16.png">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <title>اجازة - متتبع الإجازات</title>
+    
+    <style>
+        /* Base Styles */
+        * {
+            font-family: 'Cairo', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            direction: rtl;
+            background-color: #f9fafb;
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+        
+        /* Loading State */
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+        
+        /* Card Styles */
+        .vacation-card {
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .vacation-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Countdown Styles */
+        .countdown-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .progress-bar {
+            height: 8px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: white;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        
+        /* Tab Styles */
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .tab-button {
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .tab-button.active {
+            background-color: #0284c7;
+            color: white;
+        }
+        
+        .tab-button.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            left: 0;
+            height: 3px;
+            background-color: #0284c7;
+        }
+        
+        /* Modal Styles */
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        
+        .modal.show {
+            opacity: 1;
+            pointer-events: all;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+        }
+        
+        .modal.show .modal-content {
+            transform: scale(1);
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .animate-fade-in-up {
+            animation: fadeInUp 0.3s ease-out;
+        }
+        
+        /* Status Colors */
+        .status-pending {
+            border-right: 4px solid #f59e0b;
+            background-color: #fffbeb;
+        }
+        
+        .status-approved {
+            border-right: 4px solid #10b981;
+            background-color: #ecfdf5;
+        }
+        
+        .status-rejected {
+            border-right: 4px solid #ef4444;
+            background-color: #fef2f2;
+        }
+        
+        /* Vacation Type Colors */
+        .type-short { background-color: #dbeafe; }
+        .type-annual { background-color: #f0fdf4; }
+        .type-split { background-color: #faf5ff; }
+        .type-private { background-color: #fef3c7; }
+        
+        /* Button Styles */
+        .btn {
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background-color: #0284c7;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #0369a1;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+        }
+        
+        .btn-success {
+            background-color: #10b981;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background-color: #059669;
+        }
+        
+        .btn-danger {
+            background-color: #ef4444;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background-color: #dc2626;
+        }
+        
+        .btn-secondary {
+            background-color: #6b7280;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #4b5563;
+        }
+        
+        /* Form Styles */
+        .form-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: #0284c7;
+            box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.1);
+        }
+        
+        .form-input.error {
+            border-color: #ef4444;
+        }
+        
+        /* Date input readonly styles */
+        input[type="date"][readonly] {
+            background-color: white;
+            color: inherit;
+            cursor: pointer;
+        }
+        
+        input[type="date"][readonly]:focus {
+            outline: none;
+            border-color: #0284c7;
+            box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.1);
+        }
+        
+        /* Install Prompt Styles */
+        .install-prompt {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            border-radius: 20px 20px 0 0;
+            padding: 24px;
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+        }
+        
+        .install-prompt.show {
+            transform: translateY(0);
+        }
+        
+        .install-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        
+        .install-overlay.show {
+            opacity: 1;
+            pointer-events: all;
+        }
+        
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: white;
+            padding: 16px 24px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 2000;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+        
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+        
+        .toast.success {
+            border-right: 4px solid #10b981;
+        }
+        
+        .toast.error {
+            border-right: 4px solid #ef4444;
+        }
+        
+        .toast.info {
+            border-right: 4px solid #3b82f6;
+        }
+        
+        /* Settings Modal */
+        .settings-section {
+            border-bottom: 1px solid #e5e7eb;
+            padding-bottom: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .settings-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+        
+        /* User Type Selection */
+        .user-type-card {
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .user-type-card:hover {
+            border-color: #0284c7;
+            background-color: #f0f9ff;
+        }
+        
+        .user-type-card.selected {
+            border-color: #0284c7;
+            background-color: #dbeafe;
+        }
+        
+        /* Toggle Switch */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+        }
+        
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+        
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .slider {
+            background-color: #0284c7;
+        }
+        
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+        
+        /* Permission Status Styles */
+        .permission-granted {
+            color: #10b981;
+            font-weight: 600;
+        }
+        
+        .permission-denied {
+            color: #ef4444;
+            font-weight: 600;
+        }
+        
+        .permission-default {
+            color: #f59e0b;
+            font-weight: 600;
+        }
+        
+        /* تحسين أزرار المشاركة */
+        [data-action="share"] {
+            transition: all 0.3s ease;
+        }
+        
+        [data-action="share"]:hover {
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3);
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .container {
+                padding-left: 16px;
+                padding-right: 16px;
+            }
+            
+            .tab-button {
+                font-size: 14px;
+                padding: 12px 8px;
+            }
+            
+            .btn {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+            
+            .modal-content {
+                width: 95%;
+                margin: 20px;
+            }
+        }
+        
+        /* Print Styles */
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            
+            body {
+                background: white !important;
+            }
+        }
+        
+        /* Accessibility */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+        
+        /* Focus Styles */
+        *:focus-visible {
+            outline: 2px solid #0284c7;
+            outline-offset: 2px;
+        }
+        
+        button:focus-visible {
+            outline-offset: 2px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Install Overlay -->
+    <div id="installOverlay" class="install-overlay"></div>
+    
+    <!-- Install Prompt -->
+    <div id="installPrompt" class="install-prompt">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center">
+                <i class="fas fa-download text-2xl text-blue-600 ml-3"></i>
+                <h3 class="text-xl font-bold text-gray-800">تثبيت تطبيق "اجازة"</h3>
+            </div>
+            <button id="closeInstallPrompt" class="text-gray-500 hover:text-gray-700 transition-colors">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+        <p class="text-gray-600 mb-6">
+            قم بتثبيت التطبيق للحصول على تجربة أسرع، وصول سريع من الشاشة الرئيسية، وتشغيل دون اتصال بالإنترنت.
+        </p>
+        <div class="flex gap-3">
+            <button id="installAppBtn" class="btn btn-primary flex-1">
+                <i class="fas fa-download"></i>
+                تثبيت التطبيق
+            </button>
+            <button id="installLaterBtn" class="btn" style="background: #f3f4f6; color: #374151;">
+                لاحقاً
+            </button>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <div class="bg-gradient-to-l from-blue-600 to-indigo-700 text-white p-6 rounded-t-2xl">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-2xl font-bold">الإعدادات</h2>
+                    <button id="closeSettings" class="text-white hover:text-gray-200 transition-colors">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="p-6">
+                <!-- User Type Selection -->
+                <div class="settings-section">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">نوع المستخدم</h3>
+                    <div class="space-y-3">
+                        <div class="user-type-card" data-user-type="continuous">
+                            <div class="flex items-start">
+                                <div class="ml-3">
+                                    <h4 class="font-bold text-gray-800">نظام العطلة المستمرة</h4>
+                                    <p class="text-sm text-gray-600 mt-1">عطلة سنوية مستمرة (30 يوم) + إجازة قصيرة كل 70 يوم</p>
+                                    <ul class="text-xs text-gray-500 mt-2 mr-4">
+                                        <li>• عطلة سنوية: 30 يوم متتالية</li>
+                                        <li>• إجازة قصيرة: 6 أيام كل 70 يوم</li>
+                                        <li>• فترة الإجازة القصيرة: 15 نوفمبر - 15 مايو</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="user-type-card" data-user-type="split">
+                            <div class="flex items-start">
+                                <div class="ml-3">
+                                    <h4 class="font-bold text-gray-800">نظام العطلة المقسمة</h4>
+                                    <p class="text-sm text-gray-600 mt-1">عطلة سنوية مقسمة (30 يوم) + إجازات خاصة</p>
+                                    <ul class="text-xs text-gray-500 mt-2 mr-4">
+                                        <li>• عطلة سنوية: 30 يوم قابلة للتقسيم</li>
+                                        <li>• إجازات خاصة: غير محدودة</li>
+                                        <li>• لا يوجد إجازة قصيرة</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Vacation Settings -->
+                <div id="continuousSettings" class="settings-section">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">إعدادات الإجازة القصيرة</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="shortVacationDays" class="block text-sm font-medium text-gray-700 mb-2">
+                                عدد أيام الإجازة القصيرة
+                            </label>
+                            <input type="number" id="shortVacationDays" min="1" max="15" value="6" class="form-input">
+                        </div>
+                        
+                        <div>
+                            <label for="shortVacationCooldown" class="block text-sm font-medium text-gray-700 mb-2">
+                                فترة الانتظار بين الإجازات (بالأيام)
+                            </label>
+                            <input type="number" id="shortVacationCooldown" min="1" max="365" value="70" class="form-input">
+                        </div>
+                        
+                        <div>
+                            <label for="shortVacationStart" class="block text-sm font-medium text-gray-700 mb-2">
+                                تاريخ بداية العد التنازلي
+                            </label>
+                            <input type="date" id="shortVacationStart" class="form-input">
+                            <p class="text-xs text-gray-500 mt-1">سيتم حساب الأيام المتبقية من هذا التاريخ</p>
+                        </div>
+                        
+                        <div class="border-t border-gray-200 pt-4 mt-4">
+                            <h4 class="font-medium text-gray-800 mb-3">فترة الإجازة القصيرة</h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="shortVacationStartDate" class="block text-sm font-medium text-gray-700 mb-2">
+                                        تاريخ البدء
+                                    </label>
+                                    <input type="date" id="shortVacationStartDate" class="form-input">
+                                </div>
+                                
+                                <div>
+                                    <label for="shortVacationEndDate" class="block text-sm font-medium text-gray-700 mb-2">
+                                        تاريخ الانتهاء
+                                    </label>
+                                    <input type="date" id="shortVacationEndDate" class="form-input">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="border-t border-gray-200 pt-4 mt-4">
+                            <h4 class="font-medium text-gray-800 mb-3">فترة العطلة السنوية</h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="annualVacationStartDate" class="block text-sm font-medium text-gray-700 mb-2">
+                                        تاريخ البدء
+                                    </label>
+                                    <input type="date" id="annualVacationStartDate" class="form-input">
+                                </div>
+                                
+                                <div>
+                                    <label for="annualVacationEndDate" class="block text-sm font-medium text-gray-700 mb-2">
+                                        تاريخ الانتهاء
+                                    </label>
+                                    <input type="date" id="annualVacationEndDate" class="form-input">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Split Settings -->
+                <div id="splitSettings" class="settings-section hidden">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">إعدادات العطلة المقسمة</h3>
+                    <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                        <p class="text-sm text-purple-700">
+                            العطلة المقسامة: 30 يوم قابلة للتقسيم على مدار السنة
+                        </p>
+                    </div>
+                </div>
+                
+                <!-- قسم أذونات PWA الجديد -->
+                <div class="settings-section">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">أذونات التطبيق</h3>
+                    <div class="space-y-4">
+                        <!-- إشعارات -->
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div>
+                                <div class="font-medium text-gray-800">الإشعارات</div>
+                                <div class="text-sm text-gray-600">لإرسال تنبيهات الإجازات</div>
+                            </div>
+                            <div class="text-left">
+                                <span id="currentPermissionStatus" class="px-2 py-1 text-xs rounded-full permission-default">جاري التحقق...</span>
+                                <button id="requestPermissionBtn" class="mt-2 px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
+                                    طلب الإذن
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- قائمة الأذونات الأخرى -->
+                        <div id="permissionsList" class="space-y-3">
+                            <!-- سيتم ملؤها ديناميكياً -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Notification Settings -->
+                <div class="settings-section">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">إعدادات التنبيهات</h3>
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">تفعيل التنبيهات</label>
+                                <p class="text-xs text-gray-500 mt-1">تفعيل أو تعطيل جميع التنبيهات</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="notificationsToggle" class="sr-only peer" checked>
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                            </label>
+                        </div>
+                        
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">تنبيهات قبل البدء</label>
+                                <p class="text-xs text-gray-500 mt-1">عدد الأيام قبل بدء الإجازة للتنبيه</p>
+                            </div>
+                            <select id="notificationBeforeStart" class="form-input w-24 text-sm">
+                                <option value="0">بدون</option>
+                                <option value="1">يوم واحد</option>
+                                <option value="2">يومان</option>
+                                <option value="3" selected>3 أيام</option>
+                                <option value="7">أسبوع</option>
+                            </select>
+                        </div>
+                        
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">تنبيهات قبل الانتهاء</label>
+                                <p class="text-xs text-gray-500 mt-1">عدد الأيام قبل انتهاء الإجازة للتنبيه</p>
+                            </div>
+                            <select id="notificationBeforeEnd" class="form-input w-24 text-sm">
+                                <option value="0">بدون</option>
+                                <option value="1">يوم واحد</option>
+                                <option value="2">يومان</option>
+                                <option value="3" selected>3 أيام</option>
+                                <option value="7">أسبوع</option>
+                            </select>
+                        </div>
+                        
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">تنبيهات عند الانتهاء</label>
+                                <p class="text-xs text-gray-500 mt-1">تنبيه عند انتهاء الإجازة</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="notificationOnEnd" class="sr-only peer" checked>
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                            </label>
+                        </div>
+                        
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">تنبيهات رصيد الإجازة القصيرة</label>
+                                <p class="text-xs text-gray-500 mt-1">تنبيه عند توفر رصيد جديد من الإجازة القصيرة</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="notificationShortBalance" class="sr-only peer" checked>
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                            </label>
+                        </div>
+                        
+                        <!-- قسم ميزة المشاركة -->
+                        <div class="border-t border-gray-200 pt-4 mt-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">مشاركة الإجازات</label>
+                                    <p class="text-xs text-gray-500 mt-1">مشاركة تفاصيل الإجازة مع الآخرين</p>
+                                </div>
+                                <span class="text-xs text-gray-500">
+                                    مدعوم في المتصفحات الحديثة
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                
+                <!-- Import & Export -->
+                <div class="settings-section">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">استيراد وتصدير البيانات</h3>
+                    <div class="flex gap-3">
+                        <button id="importBtn" class="btn btn-success">
+                            <i class="fas fa-file-import"></i>
+                            استيراد البيانات
+                        </button>
+                        <input type="file" id="importFile" class="hidden" accept=".json">
+                        
+                        <button id="exportBtn" class="btn btn-primary">
+                            <i class="fas fa-file-export"></i>
+                            تصدير البيانات
+                        </button>
+                    </div>
+                    <p class="text-gray-500 text-sm mt-3">
+                        قم بتصدير بياناتك كنسخة احتياطية أو استيراد بيانات سابقة. الملفات بصيغة JSON.
+                    </p>
+                </div>
+                
+                <!-- Reset Data -->
+                <div class="settings-section">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-700 mb-2">إعادة تعيين البيانات</h3>
+                            <p class="text-gray-500 text-sm">
+                                تحذير: هذه العملية ستحذف جميع بيانات الإجازات وتعيين جميع الإعدادات إلى الافتراضية.
+                            </p>
+                        </div>
+                        <button id="resetBtn" class="btn btn-danger">
+                            <i class="fas fa-trash-alt"></i>
+                            إعادة تعيين كاملة
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirmModal" class="modal">
+        <div class="modal-content max-w-md">
+            <div class="p-6">
+                <div class="text-center mb-6">
+                    <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-exclamation-triangle text-2xl text-red-600"></i>
+                    </div>
+                    <h3 id="confirmTitle" class="text-xl font-bold text-gray-900 mb-2">تأكيد الإجراء</h3>
+                    <p id="confirmMessage" class="text-gray-500">هل أنت متأكد من هذا الإجراء؟</p>
+                </div>
+                <div class="flex gap-3 justify-center">
+                    <button id="confirmBtn" class="btn btn-danger min-w-[100px]">نعم، متابعة</button>
+                    <button id="cancelConfirmBtn" class="btn btn-secondary min-w-[100px]">إلغاء</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toastContainer"></div>
+
+    <!-- Header -->
+    <header class="bg-gradient-to-l from-blue-600 to-indigo-700 text-white shadow-lg no-print">
+        <div class="container mx-auto px-4 py-6">
+            <div class="flex flex-col md:flex-row md:items-center justify-between">
+                <div class="flex items-center mb-4 md:mb-0">
+                    <i class="fas fa-umbrella-beach text-3xl ml-3"></i>
+                    <div>
+                        <h1 class="text-2xl md:text-3xl font-bold">اجازة</h1>
+                        <p class="text-blue-100 text-sm">متتبع الإجازات الشخصية</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-4">
+                    <button id="notificationBtn" class="relative p-2 hover:bg-white/20 rounded-lg transition-colors">
+                        <i class="fas fa-bell"></i>
+                        <span id="notificationBadge" class="absolute top-1 left-1 w-2 h-2 bg-red-500 rounded-full"></span>
+                    </button>
+                    <button id="settingsBtn" class="p-2 hover:bg-white/20 rounded-lg transition-colors">
+                        <i class="fas fa-cog"></i>
+                    </button>
+                    <button id="refreshBtn" class="p-2 hover:bg-white/20 rounded-lg transition-colors">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-6">
+        <!-- Countdown Section -->
+        <section id="countdownSection" class="mb-6" aria-label="العد التنازلي للإجازات">
+            <!-- Countdown cards will be added here by JavaScript -->
+        </section>
+
+        <!-- Tabs Navigation -->
+        <nav class="bg-white rounded-xl shadow-lg mb-6 no-print" role="tablist">
+            <div class="flex border-b border-gray-200 overflow-x-auto">
+                <button 
+                    role="tab"
+                    aria-selected="true"
+                    aria-controls="dashboard"
+                    data-tab="dashboard"
+                    class="tab-button active flex-1 py-4 font-medium text-center min-w-[120px]"
+                >
+                    <i class="fas fa-chart-pie ml-2"></i>
+                    لوحة التحكم
+                </button>
+                <button 
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="add"
+                    data-tab="add"
+                    class="tab-button flex-1 py-4 font-medium text-center min-w-[120px]"
+                >
+                    <i class="fas fa-plus ml-2"></i>
+                    إضافة إجازة
+                </button>
+                <button 
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="list"
+                    data-tab="list"
+                    class="tab-button flex-1 py-4 font-medium text-center min-w-[120px]"
+                >
+                    <i class="fas fa-list ml-2"></i>
+                    قائمة الإجازات
+                </button>
+            </div>
+        </nav>
+
+        <!-- Tab Contents -->
+        <div class="tab-contents">
+            <!-- Dashboard Tab -->
+            <section id="dashboard" class="tab-content active" role="tabpanel">
+                <div class="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <!-- Dynamic stats cards will be inserted here -->
+                </div>
+                
+                <!-- Recent Vacations -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <h3 class="text-lg font-bold text-gray-800 mb-4">آخر الإجازات</h3>
+                    <div id="recentVacations" class="space-y-3">
+                        <!-- Recent vacations will be added here -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Add Vacation Tab -->
+            <section id="add" class="tab-content" role="tabpanel">
+                <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center">
+                        <i class="fas fa-calendar-plus ml-2 text-blue-600"></i>
+                        إضافة إجازة جديدة
+                    </h2>
+                    
+                    <!-- Vacation Type Selection -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">اختر نوع الإجازة</label>
+                        <div id="vacationTypesContainer" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <!-- Vacation type buttons will be dynamically inserted here -->
+                        </div>
+                    </div>
+                    
+                    <!-- Vacation Form -->
+                    <form id="vacationForm" class="space-y-6" novalidate>
+                        <input type="hidden" id="vacationType" name="vacationType" value="">
+                        
+                        <!-- Dynamic Form Fields Container -->
+                        <div id="formFieldsContainer">
+                            <!-- Fields will be dynamically inserted here -->
+                        </div>
+                        
+                        <!-- No Type Selected Message -->
+                        <div id="noTypeSelected" class="text-center py-8">
+                            <i class="fas fa-calendar-plus text-gray-300 text-4xl mb-4"></i>
+                            <h3 class="text-lg font-medium text-gray-700 mb-2">اختر نوع الإجازة أولاً</h3>
+                            <p class="text-gray-500">قم باختيار نوع الإجازة من الأزرار أعلاه لظهور حقول الإدخال المناسبة</p>
+                        </div>
+                        
+                        <!-- Common Fields (hidden initially) -->
+                        <div id="commonFields" class="hidden space-y-4">
+                            <div>
+                                <label for="vacationStatus" class="block text-sm font-medium text-gray-700 mb-2">
+                                    حالة الإجازة
+                                </label>
+                                <select id="vacationStatus" name="vacationStatus" class="form-input">
+                                    <option value="upcoming">قادمة</option>
+                                    <option value="current">حالية</option>
+                                    <option value="completed">منتهية</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label for="notes" class="block text-sm font-medium text-gray-700 mb-2">
+                                    ملاحظات إضافية (اختياري)
+                                </label>
+                                <textarea 
+                                    id="notes" 
+                                    name="notes"
+                                    rows="3" 
+                                    class="form-input"
+                                    placeholder="أي ملاحظات إضافية..."
+                                ></textarea>
+                            </div>
+                            
+                            <div class="pt-4 border-t border-gray-200">
+                                <button type="submit" class="btn btn-primary w-full">
+                                    <i class="fas fa-save"></i>
+                                    حفظ الإجازة
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Vacation List Tab -->
+            <section id="list" class="tab-content" role="tabpanel">
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between mb-6">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-4 md:mb-0 flex items-center">
+                            <i class="fas fa-list-alt ml-2 text-blue-600"></i>
+                            قائمة الإجازات
+                        </h2>
+                        
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <div class="flex items-center bg-gray-50 rounded-lg px-3 py-2">
+                                <i class="fas fa-filter text-gray-500 ml-2"></i>
+                                <select id="filterType" class="bg-transparent border-none focus:ring-0 text-sm">
+                                    <option value="all">كل الأنواع</option>
+                                    <!-- Filter options will be dynamically inserted -->
+                                </select>
+                            </div>
+                            
+                            <div class="flex items-center bg-gray-50 rounded-lg px-3 py-2">
+                                <i class="fas fa-calendar text-gray-500 ml-2"></i>
+                                <select id="filterYear" class="bg-transparent border-none focus:ring-0 text-sm">
+                                    <!-- Years will be populated by JavaScript -->
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="vacationsList" class="space-y-4" role="list">
+                        <!-- Vacation cards will be added here by JavaScript -->
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 mt-8 py-6 no-print">
+        <div class="container mx-auto px-4 text-center text-gray-600">
+            <p>© <span id="currentYear"></span> تطبيق "اجازة". جميع الحقوق محفوظة.</p>
+            <p class="text-sm mt-2">تطبيق ويب تقدمي (PWA) - يعمل دون اتصال بالإنترنت</p>
+        </div>
+    </footer>
+
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg p-6 flex flex-col items-center">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+            <p class="text-gray-700">جاري التحميل...</p>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="app.js"></script>
+    <script>
+// تحديث الإعدادات عند الفتح
+const originalShowSettingsModal = showSettingsModal;
+showSettingsModal = function() {
+    originalShowSettingsModal();
+};
+</script>
+</body>
+</html>
