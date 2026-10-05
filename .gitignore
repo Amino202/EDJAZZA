@@ -1,0 +1,22 @@
+# Environment and secret files
+.env
+.env.*
+*.env
+*.env.*
+*.env.txt
+notepad.env.txt
+
+# Private key and certificate material
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local databases and runtime state
+*.db
+*.sqlite
+*.sqlite3
+
+# Local tooling and OS files
+node_modules/
+.DS_Store

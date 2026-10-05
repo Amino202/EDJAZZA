@@ -14,8 +14,43 @@ webpush.setVapidDetails(
 );
 
 // ============ Middleware ============
-app.use(cors());
-app.use(express.json());
+    const ALLOWED_ORIGIN = 'https://edjazza11.netlify.app';
+    const REQUEST_BODY_LIMIT = '100kb';
+    const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+    const RATE_LIMIT_MAX_REQUESTS = 100;
+    const rateLimitStore = new Map();
+
+    function applicationRateLimit(req, res, next) {
+      const now = Date.now();
+      const ip = req.ip || req.socket.remoteAddress || 'unknown';
+      const current = rateLimitStore.get(ip);
+
+      if (!current || now >= current.resetAt) {
+        rateLimitStore.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+        return next();
+      }
+
+      if (current.count >= RATE_LIMIT_MAX_REQUESTS) {
+        const minutesRemaining = Math.max(1, Math.ceil((current.resetAt - now) / 60000));
+        return res.status(429).json({
+          error: `تم تجاوز حد الطلبات. أعد المحاولة بعد ${minutesRemaining} دقيقة.`
+        });
+      }
+
+      current.count += 1;
+      return next();
+    }
+
+    app.use(cors({ origin: ALLOWED_ORIGIN }));
+    app.use((req, res, next) => {
+      const origin = req.get('Origin');
+      if (origin && origin !== ALLOWED_ORIGIN) {
+        return res.status(403).json({ error: 'الأصل غير مسموح.' });
+      }
+      return next();
+    });
+    app.use(applicationRateLimit);
+    app.use(express.json({ limit: REQUEST_BODY_LIMIT }));
 
 // ============ قاعدة البيانات SQLite ============
 const db = new Database('subscriptions.db');
@@ -61,7 +96,7 @@ app.post('/api/subscribe', (req, res) => {
     });
   } catch (error) {
     console.error('❌ خطأ في التسجيل:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'حدث خطأ داخلي.' });
   }
 });
 
@@ -101,7 +136,7 @@ app.post('/api/send-notification', async (req, res) => {
     res.status(200).json({ message: 'تم إرسال الإشعار بنجاح' });
   } catch (error) {
     console.error('❌ خطأ في إرسال الإشعار:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'حدث خطأ داخلي.' });
   }
 });
 
@@ -159,7 +194,7 @@ app.post('/api/broadcast-notification', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ خطأ في البث:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'حدث خطأ داخلي.' });
   }
 });
 
@@ -173,7 +208,7 @@ app.post('/api/unsubscribe', (req, res) => {
     res.status(200).json({ message: 'تم إلغاء الاشتراك' });
   } catch (error) {
     console.error('❌ خطأ في إلغاء الاشتراك:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'حدث خطأ داخلي.' });
   }
 });
 
@@ -199,7 +234,7 @@ app.get('/api/stats', (req, res) => {
     });
   } catch (error) {
     console.error('❌ خطأ في جلب الإحصائيات:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'حدث خطأ داخلي.' });
   }
 });
 
@@ -212,6 +247,13 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+    app.use((error, req, res, next) => {
+      if (error.type === 'entity.too.large') {
+        return res.status(413).json({ error: 'حجم الطلب يتجاوز الحد المسموح.' });
+      }
+      console.error('❌ خطأ داخلي في الخادم');
+      return res.status(500).json({ error: 'حدث خطأ داخلي.' });
+    });
 // ============ تشغيل الخادم ============
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
