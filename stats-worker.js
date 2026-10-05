@@ -13,7 +13,12 @@ self.onmessage = function(e) {
 };
 
 function calculateStats(appData) {
+    const defaultBalance = appData.defaultVacationBalance;
     try {
+        if (!defaultBalance) {
+            throw new Error('Missing default vacation balance configuration');
+        }
+
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const currentYear = today.getFullYear();
@@ -98,8 +103,8 @@ function calculateStats(appData) {
         // Calculate and store the results
         const calculatedStats = {
             totalUsed: totalUsed,
-            annualBalance: Math.max(0, 30 - annualDaysUsedInCurrentPeriod), // Assuming default of 30 days
-            splitBalance: Math.max(0, 30 - totalSplitDaysUsed), // Assuming default of 30 days
+            annualBalance: Math.max(0, defaultBalance.annual - annualDaysUsedInCurrentPeriod),
+            splitBalance: Math.max(0, defaultBalance.split - totalSplitDaysUsed),
             privateCount: privateCount,
             completedPrivateCount: completedPrivateCount
         };
@@ -131,7 +136,7 @@ function calculateStats(appData) {
                 calculatedStats.shortBalance = appData.settings.shortVacationDays;
             }
         } else {
-            calculatedStats.shortBalance = appData.stats.shortBalance || 0; // Preserve for non-continuous users
+            calculatedStats.shortBalance = Math.max(0, appData.settings.shortVacationDays - shortDaysUsedInCurrentPeriod);
         }
 
         return calculatedStats;
@@ -140,11 +145,11 @@ function calculateStats(appData) {
         // Return default stats in case of error
         return {
             totalUsed: 0,
-            annualBalance: 30,
-            splitBalance: 30,
+            annualBalance: defaultBalance?.annual || 0,
+            splitBalance: defaultBalance?.split || 0,
             privateCount: 0,
             completedPrivateCount: 0,
-            shortBalance: 6
+            shortBalance: defaultBalance?.short || 0
         };
     }
 }

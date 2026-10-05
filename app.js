@@ -1799,10 +1799,10 @@ function validateVacationData(data) {
 }
 
 function validateVacationRules(type, startDate, endDate, days) {
-    const rules = APP_CONFIG.VACATION_RULES[type];
-    if (!rules) {
-        if (type === 'private') return true;
-        return true;
+    const supportedVacationTypes = ['annual', 'short', 'split', 'private'];
+    if (!supportedVacationTypes.includes(type)) {
+        showToast('نوع الإجازة غير معروف', 'error');
+        return false;
     }
 
     const hasOverlap = appData.vacations.some(vacation => {
@@ -1838,26 +1838,6 @@ function validateVacationRules(type, startDate, endDate, days) {
             
             if (startDate < periodStart || endDate > periodEnd) {
                 showToast(`العطلة السنوية مسموحة فقط من ${formatDate(periodStart)} إلى ${formatDate(periodEnd)}`, 'error');
-                return false;
-            }
-        }
-        
-        if (type === 'short') {
-            const shortPeriod = appData.settings.shortVacationPeriod;
-            const year = startDate.getFullYear();
-            
-            let periodStart, periodEnd;
-            const currentPeriodStart = new Date(year, shortPeriod.startMonth - 1, shortPeriod.startDay);
-            if (startDate < currentPeriodStart) {
-                periodStart = new Date(year - 1, shortPeriod.startMonth - 1, shortPeriod.startDay);
-                periodEnd = new Date(year, shortPeriod.endMonth - 1, shortPeriod.endDay);
-            } else {
-                periodStart = currentPeriodStart;
-                periodEnd = new Date(year + 1, shortPeriod.endMonth - 1, shortPeriod.endDay);
-            }
-            
-            if (startDate < periodStart || endDate > periodEnd) {
-                showToast(`الإجازة القصيرة مسموحة فقط من ${formatDate(periodStart)} إلى ${formatDate(periodEnd)}`, 'error');
                 return false;
             }
         }
@@ -1922,27 +1902,30 @@ function revertVacationImpact(vacation) {
     const days = Number(vacation.days) || 0;
     switch (vacation.type) {
         case 'short':
+            appData.stats.shortBalance = Math.min(
+                APP_CONFIG.DEFAULT_VACATION_BALANCE.short,
+                (Number(appData.stats.shortBalance) || 0) + days
+            );
             break;
         case 'annual':
+            appData.stats.annualBalance = Math.min(
+                APP_CONFIG.DEFAULT_VACATION_BALANCE.annual,
+                (Number(appData.stats.annualBalance) || 0) + days
+            );
             break;
         case 'split':
-            appData.stats.splitBalance += days;
-            if (appData.stats.splitBalance > 30) appData.stats.splitBalance = 30;
+            appData.stats.splitBalance = Math.min(
+                APP_CONFIG.DEFAULT_VACATION_BALANCE.split,
+                (Number(appData.stats.splitBalance) || 0) + days
+            );
             break;
     }
 }
 
 // ✅ مسح الـ cache عند تعديل البيانات
 async function addVacation(vacationData) {
-    switch (vacationData.type) {
-        case 'short':
-            appData.settings.shortVacationStart = vacationData.startDate;
-            break;
-        case 'annual':
-            break;
-        case 'split':
-            appData.stats.splitBalance -= vacationData.days;
-            break;
+    if (vacationData.type === 'short') {
+        appData.settings.shortVacationStart = vacationData.startDate;
     }
 
     vacationData.status = calculateVacationStatus(vacationData);
@@ -2023,6 +2006,13 @@ async function performDeleteVacation(id) {
 
         revertVacationImpact(vacation);
         appData.vacations.splice(vacationIndex, 1);
+
+        if (vacation.type === 'short') {
+            const latestShortVacation = appData.vacations
+                .filter(v => v.type === 'short')
+                .sort((a, b) => new Date(b.startDate) - new Date(a.startDate))[0];
+            appData.settings.shortVacationStart = latestShortVacation?.startDate || null;
+        }
 
         // ✅ إلغاء إشعارات الإجازة المحذوفة
         if (notificationManager) {
@@ -2105,14 +2095,26 @@ const statsCache = {
 };
 
 function getVacationsHash() {
-    // إنشاء hash بسيط من عدد وتواريخ الإجازات
-    return appData.vacations.length + 
-           appData.vacations.map(v => v.startDate + v.endDate).join('');
+    return JSON.stringify(appData.vacations.map(vacation => ({
+        id: vacation.id,
+        startDate: vacation.startDate,
+        endDate: vacation.endDate,
+        days: Number(vacation.days) || 0,
+        type: vacation.type,
+        status: vacation.status
+    })));
 }
 
 function getCachedStatsKey() {
-    // Create a key based on the current app state that affects stats calculation
-    return `${appData.vacations.length}_${appData.settings.shortVacationDays}_${appData.settings.shortVacationCooldown}_${appData.userType}`;
+    return JSON.stringify({
+        vacations: getVacationsHash(),
+        userType: appData.userType,
+        defaultBalance: APP_CONFIG.DEFAULT_VACATION_BALANCE,
+        shortVacationDays: appData.settings.shortVacationDays,
+        shortVacationCooldown: appData.settings.shortVacationCooldown,
+        annualVacationPeriod: appData.settings.annualVacationPeriod,
+        shortVacationPeriod: appData.settings.shortVacationPeriod
+    });
 }
 
 // Safe UI update function to prevent recursion
@@ -2316,7 +2318,10 @@ function updateStatsWithWorker() {
             // Send data to worker
             statsWorker.postMessage({
                 type: 'UPDATE_STATS',
-                data: appData
+                data: {
+                    ...appData,
+                    defaultVacationBalance: APP_CONFIG.DEFAULT_VACATION_BALANCE
+                }
             });
         } catch (e) {
             console.error('Error posting message to stats worker:', e);
@@ -2483,33 +2488,32 @@ function updateStats() {
         };
         
         // Handle short balance calculation separately due to user type dependency
+        const latestShortVacation = appData.vacations
+            .filter(v => v.type === 'short')
+            .sort((a, b) => new Date(b.startDate) - new Date(a.startDate))[0];
+        const latestShortStart = latestShortVacation?.startDate || appData.settings.shortVacationStart;
+
         if (appData.userType === 'continuous') {
             if (shortDaysUsedInCurrentPeriod > 0) {
                 calculatedStats.shortBalance = 0;
-                
-                const latestShortVacation = appData.vacations
-                    .filter(v => v.type === 'short')
-                    .sort((a, b) => new Date(b.startDate) - new Date(a.startDate))[0];
-                
-                if (latestShortVacation && (!appData.settings.shortVacationStart || 
-                    new Date(latestShortVacation.startDate) > new Date(appData.settings.shortVacationStart))) {
+                if (latestShortVacation) {
                     appData.settings.shortVacationStart = latestShortVacation.startDate;
                 }
-            } else if (appData.settings.shortVacationStart) {
-                const lastShortDate = parseLocalDate(appData.settings.shortVacationStart);
+            } else if (latestShortStart) {
+                const lastShortDate = parseLocalDate(latestShortStart);
                 if (lastShortDate) {
                     const daysSinceLastShort = Math.floor((today - lastShortDate) / (1000 * 60 * 60 * 24));
-                    if (daysSinceLastShort < appData.settings.shortVacationCooldown) {
-                        calculatedStats.shortBalance = 0;
-                    } else {
-                        calculatedStats.shortBalance = appData.settings.shortVacationDays;
-                    }
+                    calculatedStats.shortBalance = daysSinceLastShort < appData.settings.shortVacationCooldown
+                        ? 0
+                        : appData.settings.shortVacationDays;
+                } else {
+                    calculatedStats.shortBalance = appData.settings.shortVacationDays;
                 }
             } else {
                 calculatedStats.shortBalance = appData.settings.shortVacationDays;
             }
         } else {
-            calculatedStats.shortBalance = appData.stats.shortBalance || 0; // Preserve for non-continuous users
+            calculatedStats.shortBalance = Math.max(0, appData.settings.shortVacationDays - shortDaysUsedInCurrentPeriod);
         }
         
         // Update appData.stats with calculated values
@@ -3164,9 +3168,9 @@ function resetData() {
         },
         vacations: [],
         stats: {
-            shortBalance: 6,
-            annualBalance: 30,
-            splitBalance: 30,
+            shortBalance: APP_CONFIG.DEFAULT_VACATION_BALANCE.short,
+            annualBalance: APP_CONFIG.DEFAULT_VACATION_BALANCE.annual,
+            splitBalance: APP_CONFIG.DEFAULT_VACATION_BALANCE.split,
             totalUsed: 0,
 
             lastAnnualPeriodYear: null,
