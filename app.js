@@ -315,8 +315,8 @@ async function scheduleAllNotifications() {
         // جدولة إشعارات كل الإجازات
         for (const vacation of appData.vacations) {
             // فقط الإجازات المستقبلية أو الحالية
-            const endDate = new Date(vacation.endDate);
-            if (endDate >= new Date()) {
+            const endDate = parseLocalDate(vacation.endDate);
+            if (endDate && endDate >= new Date()) {
                 await notificationManager.scheduleVacationNotifications(
                     vacation,
                     appData.settings.notificationSettings
@@ -396,8 +396,9 @@ function updateNotificationUI() {
     if (badge) {
         const hasNotifications = appData.vacations.some(v => {
             if (!appData.settings.notifications) return false;
-            const start = new Date(v.startDate);
-            const end = new Date(v.endDate);
+            const start = parseLocalDate(v.startDate);
+            const end = parseLocalDate(v.endDate);
+            if (!start || !end) return false;
             const now = new Date();
             
             // تحقق من الإجازات القادمة في الـ7 أيام القادمة
@@ -649,7 +650,7 @@ function shareVacation(vacation) {
     if ('share' in navigator && navigator.canShare) {
         const shareData = {
             title: `إجازتي ${getVacationTypeName(vacation.type)}`,
-            text: `لدي إجازة ${vacation.type === 'private' ? 'خاصة' : ''} من ${formatDate(new Date(vacation.startDate))} إلى ${formatDate(new Date(vacation.endDate))} لمدة ${vacation.days} يوم`,
+            text: `لدي إجازة ${vacation.type === 'private' ? 'خاصة' : ''} من ${formatDate(parseLocalDate(vacation.startDate))} إلى ${formatDate(parseLocalDate(vacation.endDate))} لمدة ${vacation.days} يوم`,
             url: window.location.origin
         };
         
@@ -672,7 +673,7 @@ function shareVacation(vacation) {
 }
 
 function copyVacationToClipboard(vacation) {
-    const textToCopy = `إجازة ${getVacationTypeName(vacation.type)}: من ${formatDate(new Date(vacation.startDate))} إلى ${formatDate(new Date(vacation.endDate))} لمدة ${vacation.days} يوم`;
+    const textToCopy = `إجازة ${getVacationTypeName(vacation.type)}: من ${formatDate(parseLocalDate(vacation.startDate))} إلى ${formatDate(parseLocalDate(vacation.endDate))} لمدة ${vacation.days} يوم`;
     
     navigator.clipboard.writeText(textToCopy)
         .then(() => {
@@ -1460,9 +1461,9 @@ function updateVacationStatusOptions() {
 
     const hasActiveVacation = appData.vacations.some(v => {
         if (v.status === 'current') return true;
-        const start = new Date(v.startDate);
-        const end = new Date(v.endDate);
-        return today >= start && today <= end;
+        const start = parseLocalDate(v.startDate);
+        const end = parseLocalDate(v.endDate);
+        return start && end && today >= start && today <= end;
     });
 
     let options = `
@@ -1723,7 +1724,7 @@ function collectVacationData(type) {
     switch (type) {
         case 'short':
             data.startDate = document.getElementById('shortStartDate').value;
-            const shortStartDate = new Date(data.startDate);
+            const shortStartDate = parseLocalDate(data.startDate);
             const shortEndDateObj = new Date(shortStartDate);
             shortEndDateObj.setDate(shortStartDate.getDate() + appData.settings.shortVacationDays - 1);
             data.endDate = shortEndDateObj.toISOString().split('T')[0];
@@ -1732,7 +1733,7 @@ function collectVacationData(type) {
 
         case 'annual':
             data.startDate = document.getElementById('annualStartDate').value;
-            const annualStartDate = new Date(data.startDate);
+            const annualStartDate = parseLocalDate(data.startDate);
             const annualEndDateObj = new Date(annualStartDate);
             annualEndDateObj.setDate(annualStartDate.getDate() + 29);
             data.endDate = annualEndDateObj.toISOString().split('T')[0];
@@ -1742,7 +1743,7 @@ function collectVacationData(type) {
         case 'split':
             data.startDate = document.getElementById('splitStartDate').value;
             const splitDays = parseInt(document.getElementById('splitDays').value);
-            const splitStartDate = new Date(data.startDate);
+            const splitStartDate = parseLocalDate(data.startDate);
             const splitEndDateObj = new Date(splitStartDate);
             splitEndDateObj.setDate(splitStartDate.getDate() + splitDays - 1);
             data.endDate = splitEndDateObj.toISOString().split('T')[0];
@@ -1773,10 +1774,10 @@ function validateVacationData(data) {
         return false;
     }
 
-    const start = new Date(data.startDate);
-    const end = new Date(data.endDate);
+    const start = parseLocalDate(data.startDate);
+    const end = parseLocalDate(data.endDate);
 
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) {
         showToast('التاريخ المدخل غير صحيح. الرجاء استخدام التقويم لتحديد تاريخ صحيح', 'error');
         return false;
     }
@@ -1808,8 +1809,9 @@ function validateVacationRules(type, startDate, endDate, days) {
     const hasOverlap = appData.vacations.some(vacation => {
         if (editingId && vacation.id === editingId) return false;
 
-        const vStart = new Date(vacation.startDate);
-        const vEnd = new Date(vacation.endDate);
+        const vStart = parseLocalDate(vacation.startDate);
+        const vEnd = parseLocalDate(vacation.endDate);
+        if (!vStart || !vEnd) return false;
 
         const overlaps = (startDate <= vEnd && endDate >= vStart);
         return overlaps;
@@ -1883,8 +1885,9 @@ function validateVacationRules(type, startDate, endDate, days) {
             if (editingId && vacation.id === editingId) return false;
             if (vacation.type !== 'split') return false;
 
-            const vStart = new Date(vacation.startDate);
-            const vEnd = new Date(vacation.endDate);
+            const vStart = parseLocalDate(vacation.startDate);
+            const vEnd = parseLocalDate(vacation.endDate);
+            if (!vStart || !vEnd) return false;
 
             return (startDate <= vEnd && endDate >= vStart);
         });
@@ -2010,7 +2013,12 @@ async function performDeleteVacation(id) {
         if (vacation.type === 'short') {
             const latestShortVacation = appData.vacations
                 .filter(v => v.type === 'short')
-                .sort((a, b) => new Date(b.startDate) - new Date(a.startDate))[0];
+                .sort((a, b) => {
+                    const aDate = parseLocalDate(a.startDate);
+                    const bDate = parseLocalDate(b.startDate);
+                    if (!aDate || !bDate) return aDate ? -1 : bDate ? 1 : 0;
+                    return bDate - aDate;
+                })[0];
             appData.settings.shortVacationStart = latestShortVacation?.startDate || null;
         }
 
@@ -2456,8 +2464,8 @@ function updateStats() {
                     totalSplitDaysUsed += vacation.days;
                 } else if (vacation.type === 'private') {
                     // Count private vacations only for the current year
-                    const vacationYear = new Date(vacation.startDate).getFullYear();
-                    if (vacationYear === currentYear) {
+                    const vacationStartDate = parseLocalDate(vacation.startDate);
+                    if (vacationStartDate && vacationStartDate.getFullYear() === currentYear) {
                         privateCount++;
                         if (vacation.status === 'completed') {
                             completedPrivateCount++;
@@ -2490,7 +2498,12 @@ function updateStats() {
         // Handle short balance calculation separately due to user type dependency
         const latestShortVacation = appData.vacations
             .filter(v => v.type === 'short')
-            .sort((a, b) => new Date(b.startDate) - new Date(a.startDate))[0];
+            .sort((a, b) => {
+                    const aDate = parseLocalDate(a.startDate);
+                    const bDate = parseLocalDate(b.startDate);
+                    if (!aDate || !bDate) return aDate ? -1 : bDate ? 1 : 0;
+                    return bDate - aDate;
+                })[0];
         const latestShortStart = latestShortVacation?.startDate || appData.settings.shortVacationStart;
 
         if (appData.userType === 'continuous') {
@@ -2573,11 +2586,17 @@ function updateVacationsList() {
 
         if (filterYear !== 'all') {
             filteredVacations = filteredVacations.filter(v => {
-                return new Date(v.startDate).getFullYear() === parseInt(filterYear);
+                const startDate = parseLocalDate(v.startDate);
+                return startDate && startDate.getFullYear() === parseInt(filterYear);
             });
         }
 
-        filteredVacations.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+        filteredVacations.sort((a, b) => {
+            const aDate = parseLocalDate(a.startDate);
+            const bDate = parseLocalDate(b.startDate);
+            if (!aDate || !bDate) return aDate ? -1 : bDate ? 1 : 0;
+            return bDate - aDate;
+        });
         
         // For virtual scrolling, only render the first batch
         const vacationsToRender = filteredVacations.slice(0, VACATIONS_PER_BATCH);
@@ -3748,11 +3767,17 @@ function loadMoreVacations() {
 
     if (filterYear !== 'all') {
         filteredVacations = filteredVacations.filter(v => {
-            return new Date(v.startDate).getFullYear() === parseInt(filterYear);
+            const startDate = parseLocalDate(v.startDate);
+            return startDate && startDate.getFullYear() === parseInt(filterYear);
         });
     }
 
-    filteredVacations.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+    filteredVacations.sort((a, b) => {
+        const aDate = parseLocalDate(a.startDate);
+        const bDate = parseLocalDate(b.startDate);
+        if (!aDate || !bDate) return aDate ? -1 : bDate ? 1 : 0;
+        return bDate - aDate;
+    });
     
     // Only append new vacations if we have more to show
     const remainingVacations = filteredVacations.slice(currentVacationIndex, currentVacationIndex + VACATIONS_PER_BATCH);

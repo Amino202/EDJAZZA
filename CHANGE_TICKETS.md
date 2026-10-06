@@ -151,3 +151,97 @@ node --check /home/ubuntu/repos/EDJAZZA/app.js
 #### E5 — حالة المشروع والحدود
 
 حُدّث `PROJECT_MAP.md` إلى `IMPLEMENTED` وسُجل هذا الدليل داخل `CHANGE_TICKETS.md`. لا يُعلن هذا الدليل حالة `VERIFIED` أو `CLOSED`؛ المراجعة المستقلة وإغلاق المالك لاحقان وفق المنهجية. الحد التشغيلي الحالي هو غياب تاريخ Git من البيئة المستعادة، ولذلك لا يوجد commit جديد ولا diff تاريخي قابل للاستخراج. لم يتغير هذا الحد إلى إجراء بديل، ولم يُدفع أي شيء إلى remote.
+
+---
+
+## CHG-008 — توحيد تحليل التواريخ
+
+- **الحالة:** IMPLEMENTED
+- **المواصفة:** APPROVED
+- **النطاق المنفذ:** `app.js`، `CHANGE_TICKETS.md`، `PROJECT_MAP.md`
+- **Push:** لم يُنفذ.
+
+### المواصفة المعتمدة
+
+استُبدلت قراءات تواريخ الإجازات المخزنة التي كانت تستخدم `new Date(...)` باستخدام `parseLocalDate(...)` في المواضع المحددة بالمواصفة، مع حواجز `null` للتواريخ التالفة. لم يُعدّل `backend/server.js` ولم تُغيّر قواعد الرصيد أو التحقق.
+
+### E1 — مسوّغ التغيير والسبب الجذري
+
+كان تحليل النصوص `YYYY-MM-DD` عبر `new Date(dateString)` يفسر النص كنقطة زمنية UTC، بينما يفسره `parseLocalDate` كتاريخ محلي عند منتصف الليل بعد التحقق من صحته. أدى ذلك إلى اختلاف اليوم المحلي، خصوصًا في المناطق الزمنية السالبة، وإلى احتمال اختلاف التداخل والفرز والتصفية والإحصاءات بين المسارات.
+
+### E2 — الآلية المنفذة
+
+استُبدلت قراءات `startDate` و`endDate` المخزنة في `scheduleAllNotifications` و`updateNotificationUI` و`shareVacation` و`copyVacationToClipboard` و`updateVacationStatusOptions` و`validateVacationData` و`validateVacationRules` و`performDeleteVacation` و`updateStats` و`updateVacationsList` و`loadMoreVacations` بـ`parseLocalDate`.
+
+أضيفت الحواجز التالية: تجاهل الإجازة ذات التاريخ التالف في جدولة الإشعارات وواجهة الإشعارات والتداخل؛ رفض التاريخ التالف في `validateVacationData` بالرسالة القائمة `التاريخ المدخل غير صحيح`؛ تجاهل التاريخ التالف في فحص الحالة؛ عدم عدّ الإجازة الخاصة ذات البداية التالفة؛ واستعمال ترتيب آمن يضع السجلات ذات التاريخ الصالح قبل السجلات ذات التاريخ التالف. كما استُخدم `parseLocalDate` في مواضع إنشاء نهايات الإجازات من `data.startDate` حتى يحقق فحص AC1 صفرًا لكل الأنماط المحددة.
+
+### E3 — الملفات المتأثرة
+
+- `app.js`
+- `CHANGE_TICKETS.md`
+- `PROJECT_MAP.md`
+
+لم يُعدّل `backend/server.js`، ولم تُلمس مواضعا `new Date().toISOString()` فيه. لم يُنشأ commit بعد في هذه اللحظة؛ سيُسجل معرّف الالتزام بعد تنفيذ الالتزام المحلي.
+
+### E4 — دليل التغطية والاختبار الفعلي
+
+#### AC1 — فحص بقاء الأنماط الممنوعة
+
+الأمر:
+
+```text
+grep -n -E 'new Date\\((v|vacation|data)\\.(startDate|endDate)|new Date\\((v|vacation)\\.endDate' app.js
+```
+
+المخرجات الفعلية: فارغة، أي صفر مطابقات.
+
+#### AC2 — الاختبار في منطقتين زمنيتين
+
+الأمر المستخدم:
+
+```text
+TZ=Etc/GMT-3 node /tmp/chg008_acceptance_test.js
+TZ=Etc/GMT+5 node /tmp/chg008_acceptance_test.js
+```
+
+المخرجات الفعلية:
+
+```text
+{"TZ":"Etc/GMT-3","input":"2026-01-15","parsedDay":15,"parsedMonth":1,"parsedYear":2026,"invalidDateIsNull":true,"overlapRejected":true}
+{"TZ":"Etc/GMT+5","input":"2026-01-15","parsedDay":15,"parsedMonth":1,"parsedYear":2026,"invalidDateIsNull":true,"overlapRejected":true}
+```
+
+#### AC3 — عدم كسر سلوك التحقق السابق
+
+شُغّلت نسخة اختبار CHG-007 المكيّفة لتضمين اعتماد `parseLocalDate`:
+
+```text
+node /tmp/chg007_acceptance_test_chg008.js
+```
+
+والنتيجة الفعلية:
+
+```text
+AC1 PASS {"unknown":{"accepted":false,"messages":[{"message":"نوع الإجازة غير معروف","level":"error"}]},"vacationsAfterUnknown":0}
+AC2 PASS {"privateAgainstAnnual":{"accepted":false,"messages":[{"message":"لا يمكن إضافة إجازة في فترة تتداخل مع إجازة أخرى موجودة","level":"error"}]},"annualAgainstPrivate":{"accepted":false,"messages":[{"message":"لا يمكن إضافة إجازة في فترة تتداخل مع إجازة أخرى موجودة","level":"error"}]}}
+AC3 PASS {"exactShortPeriodChecks":1}
+AC4 PASS {"shortInsufficient":{"accepted":false,"messages":[{"message":"ليس لديك رصيد كافٍ من الإجازة القصيرة","level":"error"}]},"annualInsufficient":{"accepted":false,"messages":[{"message":"ليس لديك رصيد كافٍ من العطلة السنوية","level":"error"}]},"splitOverlap":{"accepted":false,"messages":[{"message":"لا يمكن تداخل تواريخ العطلة المقسمة مع إجازة مقسمة أخرى","level":"error"}]}}
+```
+
+نجح فحص الصياغة التالي:
+
+```text
+node --check app.js
+```
+
+أما `npm test` ففشل في البيئة الحالية لأن `package.json` على `main` لا يحتوي script باسم `test`:
+
+```text
+npm error Missing script: "test"
+```
+
+لا يُنسب هذا الفشل إلى تغيير CHG-008؛ لم يُعدّل `package.json` ضمن هذه التذكرة.
+
+#### E5 — الحدود والحالة
+
+لم يُعدّل `backend/server.js`، ولم تُغيّر قواعد الأرصدة أو قواعد التحقق الوظيفية، ولم يُنفذ push. أداة `/tmp/chg008_acceptance_test.js` وأداة `/tmp/chg007_acceptance_test_chg008.js` مؤقتتان وخارج المستودع. الحالة التنفيذية هي `IMPLEMENTED` فقط، وليست `VERIFIED` أو `CLOSED`.
