@@ -310,3 +310,87 @@ sha256sum backend/server.js
 ### E5 — الحدود والحالة
 
 لم تُعدّل دالة `cancelVacationNotifications`، ولم يُوحّد مخطط قاعدة البيانات بين `notification-manager.js` و`sw.js`، ولم يُحمّل `notification-manager.js` في `index.html`، ولم يُعدّل `backend/server.js` أو `sw.js`. هذا التغيير يختبر جدولة IndexedDB عبر محاكاة محلية فقط، ولا يختبر إرسال Push حقيقي؛ تفعيل واختبار الإرسال الفعلي خارج نطاق CHG-010 ومؤجل لـCHG-009. الحالة الحالية `IMPLEMENTED`، وسيُسجل معرّف الالتزام بعد الالتزام المحلي ثم يُدفع مباشرة وفق المواصفة.
+
+---
+## CHG-009-A — الخادم يرسل التذكيرات في وقتها
+
+- **الحالة:** IMPLEMENTED
+- **المواصفة:** APPROVED
+- **النطاق المنفذ:** `backend/server.js` و`backend/tests/chg009a.test.js` وملفات التوثيق
+- **الملفات خارج النطاق:** `app.js` و`sw.js` و`notification-manager.js` و`index.html` و`backend/package.json`
+
+### E1 — مسوّغ التغيير والسبب الجذري
+
+كان الخادم يسجل كل اشتراك جديد باستخدام `Date.now()` دون upsert أو فهرس فريد على `endpoint`، ولم يكن لديه جدول لجدولة التذكيرات أو دورة إرسال داخلية. لذلك لم يكن هناك مسار خادمي يحوّل قائمة التذكيرات إلى Push في وقتها، وكانت التكرارات والجدولات القديمة ممكنة.
+
+### E2 — الآلية المنفذة
+
+- استُخدم مسار قاعدة البيانات `process.env.DB_PATH || 'subscriptions.db'`.
+- عند بدء الخادم، تُزال التكرارات ويُبقى أحدث صف لكل `endpoint`، ثم يُنشأ فهرس فريد عليه.
+- `/api/subscribe` أصبح upsert حسب `endpoint`، ويحدّث `auth` و`p256dh` ويعيد المعرّف نفسه، أو ينشئ معرّفًا عبر `crypto.randomUUID()`.
+- أُنشئ جدول `scheduled_pushes` بالحقول والحالات والفهارس المحددة في المواصفة.
+- أضيفت `PUT /api/schedule`: يتحقق من المدخلات، يحدّ الطلب إلى 120 تذكيرًا، يتجاهل `sendAt <= الآن`، ويحذف الصفوف `scheduled` للهاتف داخل معاملة واحدة ثم يدرج القائمة الجديدة عبر `INSERT OR IGNORE`، مع إبقاء الصفوف `sent`.
+- أضيف `processScheduledPushes` قابل للاستيراد في الاختبار، ومجدول `setInterval` كل 60 ثانية يبدأ داخل callback الخاص بـ`app.listen` فقط.
+- الصف المتأخر أكثر من 24 ساعة يصبح `expired`، والصف المستحق يُرسل عبر `web-push` بحمولة `title/body/tag/data` ثم يصبح `sent`. الفشل المؤقت يزيد `attempts` ويصبح `failed` عند المحاولة الخامسة. ردّا 404 و410 يحذفان الاشتراك وكل صفوفه.
+- أضيف تنظيف يومي للصفوف النهائية الأقدم من 30 يومًا.
+- `/api/unsubscribe` يحذف صفوف `scheduled_pushes` المرتبطة أيضًا.
+- بقيت نقاط `/api/send-notification` و`/api/broadcast-notification` موجودة دون تغيير وظيفي مقصود، وحافظت طبقة CHG-003 على Origin وحد الجسم وحد المعدل والردود العامة.
+- جُعل إرسال `web-push` قابلًا للاستبدال عبر `setWebPushSender`/المعامل `sendPush` في الاختبار.
+
+### E3 — الملفات المتأثرة
+
+- `backend/server.js`
+- `backend/tests/chg009a.test.js`
+- `CHANGE_TICKETS.md`
+- `PROJECT_MAP.md`
+
+لم تُعدّل `backend/package.json` أو أي ملف آخر خارج القائمة المعتمدة.
+
+### E4 — دليل التغطية والاختبار الفعلي
+
+أُنشئ الاختبار الدائم داخل المستودع في `backend/tests/chg009a.test.js`، ويستخدم قاعدة SQLite مؤقتة وإرسال `web-push` وهميًا.
+
+الأمر الصريح المطلوب لتشغيل اختبارات backend هو:
+
+```text
+node --test backend/tests/*.test.js
+```
+
+جُرّب أيضًا الأمر الحرفي `node --test backend/tests/`، لكن Node.js 22 في هذه البيئة لا يعامل مسار المجلد كمدخل test صالح وأعاد:
+
+```text
+Error: Cannot find module '/home/ubuntu/repos/EDJAZZA/backend/tests'
+```
+
+بعد ذلك شُغّل الأمر الصريح بصيغة ملفات الاختبار، وكانت المخرجات الفعلية:
+
+```text
+✓ قاعدة البيانات جاهزة
+AC1 PASS {"idsEqual":true,"rows":1}
+AC2 PASS {"first":{"scheduled":1,"skipped":0},"second":{"scheduled":1,"skipped":0},"rows":[{"vacation_id":"vac-2","status":"scheduled"}]}
+AC3 PASS {"first":{"sent":1,"expired":0,"failed":0},"second":{"sent":0,"expired":0,"failed":0},"sends":1,"status":"sent"}
+AC4 PASS {"result":{"sent":0,"expired":1,"failed":0},"sends":0,"status":"expired"}
+AC5 PASS {"subscriptions":0,"scheduledPushes":0}
+✔ AC1: same endpoint is upserted and keeps one id
+✔ AC2: replacing a schedule leaves only the second list
+✔ AC3: due reminder is sent once and second cycle does not resend
+✔ AC4: reminder older than 24 hours expires without sending
+✔ AC5: 410 removes subscription and all its scheduled pushes
+CHG-003 PASS {"forbidden":403,"tooLarge":413,"invalid":400,"rateLimited":429}
+✔ CHG-003 regression: 403, 413, 429 and generic validation response remain enforced
+ℹ tests 6
+ℹ pass 6
+ℹ fail 0
+```
+
+كما نجحت الفحوص:
+
+```text
+node --check backend/server.js
+node --check backend/tests/chg009a.test.js
+git diff --check
+```
+
+### E5 — الحالة والحدود
+
+تم اختبار AC1 إلى AC5 فعليًا بقاعدة مؤقتة وإرسال وهمي، ولم يُرسل أي Push حقيقي إلى هاتف أو إلى بيئة إنتاج. لم تُعدّل واجهة العميل أو Service Worker أو مدير الإشعارات، ولم تُنفذ مصادقة جديدة أو معالجة تنبيه الرصيد القصير، ولم يُغيّر `trust proxy` أو منطق حد المعدل. لم يُعدّل `backend/package.json`؛ لذلك يبقى script الاختبار الفاشل عمدًا في نطاق CHG-013. الحالة التنفيذية `IMPLEMENTED`، وسيُسجل معرّف الالتزام بعد الالتزام ثم يُدفع فورًا وفق المواصفة.

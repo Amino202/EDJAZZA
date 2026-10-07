@@ -64,3 +64,13 @@ node --check /home/ubuntu/repos/EDJAZZA/app.js
 قاعدة الجدولة المعتمدة في CHG-010 هي **إلغاء الإشعارات السابقة قبل إعادة الجدولة**: تستدعي `scheduleVacationNotifications(vacation, settings)` أولًا `cancelVacationNotifications(vacation.id)`، ثم تنشئ السجلات الجديدة. لا تُعدّل دالة الإلغاء نفسها؛ وتحافظ على السجلات السابقة بحالة `cancelled` بدل حذفها.
 
 تحذير تشغيلي: مخطط قاعدة البيانات معرّف بشكل مستقل ومكرر في كل من `notification-manager.js` و`sw.js`، بما في ذلك `DB_NAME` و`DB_VERSION` والفهارس. يجب أن يُطبّق أي تعديل مستقبلي على المخطط في الملفين معًا، وإلا قد تتعطل القراءة والكتابة بينهما. لم يُوحّد هذا التكرار ضمن CHG-010.
+
+
+## CHG-009-A — جدولة وإرسال التذكيرات من الخادم
+
+- **الحالة:** IMPLEMENTED
+- **الملفات السلوكية:** `backend/server.js`
+- **اختبار القبول الدائم:** `backend/tests/chg009a.test.js`
+- **المسار:** `process.env.DB_PATH || 'subscriptions.db'`، مع جدول `scheduled_pushes`، وupsert للاشتراكات حسب `endpoint`، ونقطة `PUT /api/schedule`، ومجدول داخلي كل 60 ثانية يبدأ بعد `app.listen`.
+- **التحقق:** الأمر `node --test backend/tests/*.test.js` نجح: AC1 وAC2 وAC3 وAC4 وAC5 وارتداد CHG-003، بإجمالي 6 اختبارات ناجحة و0 فاشلة.
+- **الحدود:** لم تتغير `app.js` أو `sw.js` أو `notification-manager.js` أو `index.html` أو `backend/package.json`، ولم يُرسل Push حقيقي. الأمر `node --test backend/tests/` غير مدعوم كمسار مجلد في Node.js 22؛ استُخدم نمط ملفات الاختبار الصريح أعلاه.
