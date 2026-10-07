@@ -12,6 +12,17 @@
 
 أصبح `shortBalance` مشتقًا من سجل الإجازات، ووُحّد حساب `stats-worker.js` مع مصدر `APP_CONFIG.DEFAULT_VACATION_BALANCE`، ووُسعت بصمات الكاش لتشمل الأيام والنوع والحالة، وأصبح حذف/تعديل الإجازة القصيرة يعيد الحساب فورًا. عولج `revertVacationImpact` للأنواع `short` و`annual` و`split`.
 
+## خريطة مسارات الاستخدام (CHG-005)
+
+| المكوّن | الحالة | الدليل المثبت |
+|---|---|---|
+| `server.js` (الجذر) | يتيم مؤكّد محليًا | لا يظهر في Procfile أو railway.toml؛ النشر يستخدم backend/server.js حصرًا |
+| `backend/server.js` | مستخدَم فعليًا (الخادم الحي) | Procfile وrailway.toml يدخلان backend قبل npm start |
+| `pwabuilder-sw.js` | يتيم مؤكّد محليًا | لا تسجيل له في app.js أو index.html أو manifest.json |
+| `sw.js` | مستخدَم فعليًا | navigator.serviceWorker.register('./sw.js') في app.js |
+| `stats-worker.js` | مستخدَم فعليًا | new Worker('./stats-worker.js') في app.js |
+| `notification-manager.js` | يحتاج قرارًا؛ مؤجّل لـCHG-009/010 | موجود لكن غير محمَّل حاليًا في index.html |
+
 ## حدود CHG-006
 
 لم تُعدّل قواعد التحقق من صحة الإجازة أو فحص التداخل، ولم يُوحّد منطق التقويم أو التواريخ، ولم يُعدّل `backend/server.js`. لم يُنفذ push.
