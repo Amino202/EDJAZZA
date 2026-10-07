@@ -6,7 +6,8 @@
   },
   "scripts": {
     "start": "npm --prefix backend install && npm --prefix backend start",
-    "build": "echo 'Building...'"
+    "build": "echo 'Building...'",
+    "test": "node --test tests/*.test.js"
   },
   "dependencies": {},
   "devDependencies": {}

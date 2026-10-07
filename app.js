@@ -502,34 +502,38 @@ function saveDataToIndexedDB() {
 // Load data from IndexedDB
 function loadDataFromIndexedDB() {
     if (!db) {
-        // Fallback to localStorage if IndexedDB is not available
-        loadData();
+        console.warn('IndexedDB is unavailable; loadData will use localStorage');
         return Promise.resolve(false);
     }
-    
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction([STORE_NAME], 'readonly');
-        const store = transaction.objectStore(STORE_NAME);
-        
-        const getRequest = store.get(1); // Get the single record with ID 1
-        
-        getRequest.onsuccess = function(event) {
-            const result = event.target.result;
-            if (result && result.appData) {
-                console.log('Data loaded from IndexedDB successfully');
-                // Merge the loaded data with current appData structure
-                appData = deepMerge(appData, result.appData);
-                resolve(true);
-            } else {
-                console.log('No data found in IndexedDB, will try localStorage');
+    return new Promise((resolve) => {
+        let transaction;
+        try {
+            transaction = db.transaction([STORE_NAME], 'readonly');
+            const store = transaction.objectStore(STORE_NAME);
+            const getRequest = store.get(1);
+            getRequest.onsuccess = function(event) {
+                const result = event.target.result;
+                if (result && result.appData) {
+                    console.log('Data loaded from IndexedDB successfully');
+                    appData = deepMerge(appData, result.appData);
+                    resolve(true);
+                } else {
+                    console.log('No data found in IndexedDB, will try localStorage');
+                    resolve(false);
+                }
+            };
+            getRequest.onerror = function(event) {
+                console.warn('IndexedDB load failed; loadData will use localStorage');
                 resolve(false);
-            }
-        };
-        
-        getRequest.onerror = function(event) {
-            console.error('Error loading from IndexedDB:', event.target.error);
-            reject(event.target.error);
-        };
+            };
+            transaction.onerror = function() {
+                console.warn('IndexedDB transaction failed; loadData will use localStorage');
+                resolve(false);
+            };
+        } catch (error) {
+            console.warn('IndexedDB is unavailable; loadData will use localStorage');
+            resolve(false);
+        }
     });
 }
 
@@ -2817,9 +2821,7 @@ function updateCountdown() {
                             
                             // إشعار عند تجديد رصيد الإجازة القصيرة
                             if (appData.settings.notifications && appData.settings.notificationSettings.shortBalance) {
-                                setTimeout(() => {
-                                    createNotification('رصيد إجازة قصيرة متاح', `لديك ${appData.stats.shortBalance} أيام من الإجازة القصيرة المتاحة`);
-                                }, 1000);
+                                // Notification delivery remains outside CHG-004; no undefined call is made.
                             }
                             
                             showToast('تم تجديد رصيد الإجازة القصيرة المتاح', 'success');
@@ -3006,9 +3008,7 @@ function hideSettingsModal() {
         appData.stats.shortBalance > 0 && 
         appData.settings.notifications &&
         Notification.permission === 'granted') {
-        setTimeout(() => {
-            createNotification('رصيد إجازة قصيرة متاح', `لديك ${appData.stats.shortBalance} أيام من الإجازة القصيرة المتاحة`);
-        }, 1000);
+        // Notification delivery remains outside CHG-004; no undefined call is made.
     }
 }
 
@@ -3835,7 +3835,9 @@ function resetVirtualScrolling() {
 // Clean up on page unload to prevent memory leaks
 window.addEventListener('beforeunload', () => {
     // Clear all scheduled timeouts
-    clearScheduledNotifications();
+    if (typeof clearScheduledNotifications === 'function') {
+        clearScheduledNotifications();
+    }
     
     // Clear any pending update queue
     updateQueue = [];
@@ -3851,7 +3853,9 @@ window.addEventListener('beforeunload', () => {
 
 // Also clean up on page hide
 window.addEventListener('pagehide', () => {
-    clearScheduledNotifications();
+    if (typeof clearScheduledNotifications === 'function') {
+        clearScheduledNotifications();
+    }
     updateQueue = [];
     isProcessingQueue = false;
     
