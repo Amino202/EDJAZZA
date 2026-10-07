@@ -56,3 +56,11 @@ node --check /home/ubuntu/repos/EDJAZZA/app.js
 - **المنفذ:** استُبدلت قراءات تواريخ الإجازات المخزنة في المواضع المحددة بـ`parseLocalDate`، مع حواجز للتواريخ التالفة في التحقق والتداخل والفرز والتصفية والإحصاءات وواجهة الإشعارات.
 - **التحقق:** صفر مطابقات لأنماط `new Date` المحددة في AC1؛ نجح اختبار `2026-01-15` في `TZ=Etc/GMT-3` و`TZ=Etc/GMT+5` مع `parsedDay:15` في البيئتين؛ نجح اختبار CHG-007 المكيّف وفحص الصياغة؛ أما `npm test` فغير متاح على `main` الحالي لأن `package.json` لا يحتوي script باسم `test`.
 - **الحدود:** لم يُعدّل `backend/server.js`، ولم تُغيّر قواعد الرصيد أو التحقق الوظيفية، ولم يُنفذ push. الحالة `IMPLEMENTED` وليست `VERIFIED` أو `CLOSED`.
+
+## نموذج الإشعار (CHG-010)
+
+تستخدم منظومة الإشعارات قاعدة IndexedDB باسم `VacationNotificationsDB` وبإصدار `1`، وبها جدول واحد باسم `notifications`. حقول سجل الإشعار هي: `vacationId`, `type`, `title`, `body`, `scheduledTime`, `createdAt`, `status`, `sent`, و`data`، مع معرّف `id` ينشئه IndexedDB تلقائيًا. حالات السجل الثلاث هي `scheduled` و`sent` و`cancelled`.
+
+قاعدة الجدولة المعتمدة في CHG-010 هي **إلغاء الإشعارات السابقة قبل إعادة الجدولة**: تستدعي `scheduleVacationNotifications(vacation, settings)` أولًا `cancelVacationNotifications(vacation.id)`، ثم تنشئ السجلات الجديدة. لا تُعدّل دالة الإلغاء نفسها؛ وتحافظ على السجلات السابقة بحالة `cancelled` بدل حذفها.
+
+تحذير تشغيلي: مخطط قاعدة البيانات معرّف بشكل مستقل ومكرر في كل من `notification-manager.js` و`sw.js`، بما في ذلك `DB_NAME` و`DB_VERSION` والفهارس. يجب أن يُطبّق أي تعديل مستقبلي على المخطط في الملفين معًا، وإلا قد تتعطل القراءة والكتابة بينهما. لم يُوحّد هذا التكرار ضمن CHG-010.

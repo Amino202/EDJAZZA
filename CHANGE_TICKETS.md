@@ -245,3 +245,68 @@ npm error Missing script: "test"
 #### E5 — الحدود والحالة
 
 لم يُعدّل `backend/server.js`، ولم تُغيّر قواعد الأرصدة أو قواعد التحقق الوظيفية، ولم يُنفذ push. أداة `/tmp/chg008_acceptance_test.js` وأداة `/tmp/chg007_acceptance_test_chg008.js` مؤقتتان وخارج المستودع. الحالة التنفيذية هي `IMPLEMENTED` فقط، وليست `VERIFIED` أو `CLOSED`.
+
+---
+## CHG-010 — تثبيت نموذج الإشعار والجدولة
+
+- **الحالة:** IMPLEMENTED
+- **المواصفة:** APPROVED
+- **النطاق المنفذ:** `notification-manager.js` و`PROJECT_MAP.md` و`CHANGE_TICKETS.md`
+- **Push:** يُنفذ مباشرة بعد الالتزام وفق قاعدة المالك.
+
+### E1 — مسوّغ التغيير والسبب الجذري
+
+كانت `scheduleVacationNotifications(vacation, settings)` تنشئ سجلات جدولة جديدة مباشرة، بينما كانت الجدولات السابقة لنفس `vacationId` تبقى في قاعدة الإشعارات بحالة `scheduled`. يؤدي تكرار الجدولة، خصوصًا بعد التعديل، إلى بقاء جدولة قديمة نشطة إلى جانب الجديدة.
+
+### E2 — الآلية المنفذة
+
+أُضيف الاستدعاء التالي في بداية `scheduleVacationNotifications` بعد التحقق من وجود `vacation` و`settings` وقبل إنشاء أي إشعار جديد:
+
+```javascript
+await this.cancelVacationNotifications(vacation.id);
+```
+
+لم تُعدّل `cancelVacationNotifications` أو منطقها الداخلي. وُثّق في `PROJECT_MAP.md` اسم قاعدة البيانات والجدول والحقول والحالات وقاعدة الإلغاء قبل إعادة الجدولة، مع تحذير إبقاء مخطط `notification-manager.js` و`sw.js` متزامنًا مستقبلًا دون توحيدهما الآن.
+
+### E3 — الملفات المتأثرة
+
+- `notification-manager.js`
+- `PROJECT_MAP.md`
+- `CHANGE_TICKETS.md`
+
+خارج الملفات المتأثرة: `backend/server.js` و`sw.js` و`app.js`.
+
+### E4 — دليل التغطية والاختبار الفعلي
+
+#### AC1 — إعادة الجدولة لنفس الإجازة
+
+شُغّل اختبار محاكاة فعلي في Node باستخدام كائن IndexedDB وهمي ينفذ معاملات `readwrite` و`objectStore` وفهرس `vacationId` وعمليات `add` و`openCursor` و`update`. استُخرجت `NotificationManager` من `notification-manager.js`، ثم استُدعيت `scheduleVacationNotifications` مرتين لنفس `vacationId`.
+
+الأمر:
+
+```text
+node /tmp/chg010_acceptance_test.js
+```
+
+النتيجة الفعلية:
+
+```text
+AC1 PASS {"firstScheduled":3,"secondScheduled":3,"cancelledAfterReschedule":3,"scheduledForVacation":3}
+```
+
+تعني النتيجة أن الاستدعاء الأول أنشأ 3 سجلات `scheduled`، وأن الاستدعاء الثاني ألغى السجلات الثلاثة السابقة ثم أنشأ 3 سجلات جديدة؛ لذلك بقي عدد السجلات `scheduled` لنفس الإجازة مساويًا لما ينتجه استدعاء واحد.
+
+#### AC2 — عدم تغيير الخادم أو نقاط Push الفعلية
+
+الأوامر المستخدمة:
+
+```text
+git diff -- backend/server.js
+sha256sum backend/server.js
+```
+
+كان `git diff -- backend/server.js` فارغًا قبل التغيير وبعده، ولم يُعدّل `backend/server.js`. لم تُضف أو تُعدّل نقاط Push الفعلية، ولم يُنفذ Push حقيقي أو تغيير في `sw.js`.
+
+### E5 — الحدود والحالة
+
+لم تُعدّل دالة `cancelVacationNotifications`، ولم يُوحّد مخطط قاعدة البيانات بين `notification-manager.js` و`sw.js`، ولم يُحمّل `notification-manager.js` في `index.html`، ولم يُعدّل `backend/server.js` أو `sw.js`. هذا التغيير يختبر جدولة IndexedDB عبر محاكاة محلية فقط، ولا يختبر إرسال Push حقيقي؛ تفعيل واختبار الإرسال الفعلي خارج نطاق CHG-010 ومؤجل لـCHG-009. الحالة الحالية `IMPLEMENTED`، وسيُسجل معرّف الالتزام بعد الالتزام المحلي ثم يُدفع مباشرة وفق المواصفة.

@@ -242,6 +242,8 @@ class NotificationManager {
     async scheduleVacationNotifications(vacation, settings) {
         if (!vacation || !settings) return;
 
+        await this.cancelVacationNotifications(vacation.id);
+
         const notifications = [];
         const now = Date.now();
         const startDate = new Date(vacation.startDate).getTime();
