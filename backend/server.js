@@ -6,6 +6,7 @@ const crypto = require('crypto');
 require('dotenv').config();
 
 const app = express();
+app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
 
 // ============ إعدادات VAPID ============
 webpush.setVapidDetails(
@@ -20,6 +21,13 @@ const REQUEST_BODY_LIMIT = '100kb';
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 100;
 const rateLimitStore = new Map();
+
+function logInternalError(point, error) {
+  const fields = ['name', 'message', 'code', 'statusCode']
+    .filter(field => error && error[field] !== undefined)
+    .map(field => `${field}=${String(error[field])}`);
+  console.error(`[${point}] ${fields.join(' ')}`);
+}
 
 function applicationRateLimit(req, res, next) {
   const now = Date.now();
@@ -302,6 +310,12 @@ async function processScheduledPushes({ now = Date.now(), sendPush = sendWebPush
           SET attempts = ?, status = ?
           WHERE id = ? AND status = 'scheduled'
         `).run(attempts, attempts >= 5 ? 'failed' : 'scheduled', row.id);
+        logInternalError('scheduler send failure', {
+          name: error?.name,
+          message: `id=${row.id} kind=${row.kind} attempt=${attempts}`,
+          code: error?.code,
+          statusCode: error?.statusCode
+        });
         failed += 1;
       }
     }
@@ -322,7 +336,7 @@ async function processScheduledPushes({ now = Date.now(), sendPush = sendWebPush
 
 function startScheduler() {
   const timer = setInterval(() => {
-    processScheduledPushes().catch(() => {});
+    processScheduledPushes().catch(error => logInternalError('scheduler cycle failure', error));
   }, 60 * 1000);
   return timer;
 }
@@ -334,7 +348,7 @@ app.post('/api/subscribe', (req, res) => {
     res.status(201).json({ id, message: 'تم التسجيل بنجاح' });
   } catch (error) {
     if (error instanceof HttpError) return res.status(error.status).json({ error: error.message });
-    console.error('❌ خطأ داخلي في التسجيل');
+    logInternalError('POST /api/subscribe', error);
     return res.status(500).json({ error: 'حدث خطأ داخلي.' });
   }
 });
@@ -345,7 +359,7 @@ app.put('/api/schedule', (req, res) => {
     return res.status(200).json(result);
   } catch (error) {
     if (error instanceof HttpError) return res.status(error.status).json({ error: error.message });
-    console.error('❌ خطأ داخلي في الجدولة');
+    logInternalError('PUT /api/schedule', error);
     return res.status(500).json({ error: 'حدث خطأ داخلي.' });
   }
 });
@@ -366,7 +380,7 @@ app.post('/api/send-notification', async (req, res) => {
     await webpush.sendNotification(subscription, payload);
     res.status(200).json({ message: 'تم إرسال الإشعار بنجاح' });
   } catch (error) {
-    console.error('❌ خطأ داخلي في إرسال الإشعار');
+    logInternalError('POST /api/send-notification', error);
     res.status(500).json({ error: 'حدث خطأ داخلي.' });
   }
 });
@@ -389,12 +403,13 @@ app.post('/api/broadcast-notification', async (req, res) => {
         sent += 1;
       } catch (error) {
         if (error.statusCode === 410) deleteSubscription(sub.id);
+        logInternalError('POST /api/broadcast-notification item', error);
         failed += 1;
       }
     }
     res.status(200).json({ message: 'تم الإرسال', sent, failed, total: subs.length });
   } catch (error) {
-    console.error('❌ خطأ داخلي في البث');
+    logInternalError('POST /api/broadcast-notification', error);
     res.status(500).json({ error: 'حدث خطأ داخلي.' });
   }
 });
@@ -407,7 +422,7 @@ app.post('/api/unsubscribe', (req, res) => {
     console.log('✓ تم إلغاء الاشتراك:', subscriptionId);
     res.status(200).json({ message: 'تم إلغاء الاشتراك' });
   } catch (error) {
-    console.error('❌ خطأ داخلي في إلغاء الاشتراك');
+    logInternalError('POST /api/unsubscribe', error);
     res.status(500).json({ error: 'حدث خطأ داخلي.' });
   }
 });
@@ -425,7 +440,7 @@ app.get('/api/stats', (req, res) => {
       subscriptions: allSubs.map(s => ({ id: s.id, created_at: s.created_at }))
     });
   } catch (error) {
-    console.error('❌ خطأ داخلي في جلب الإحصائيات');
+    logInternalError('GET /api/stats', error);
     res.status(500).json({ error: 'حدث خطأ داخلي.' });
   }
 });
@@ -438,7 +453,7 @@ app.use((error, req, res, next) => {
   if (error.type === 'entity.too.large') {
     return res.status(413).json({ error: 'حجم الطلب يتجاوز الحد المسموح.' });
   }
-  console.error('❌ خطأ داخلي في الخادم');
+  logInternalError('error middleware', error);
   return res.status(500).json({ error: 'حدث خطأ داخلي.' });
 });
 

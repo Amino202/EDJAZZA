@@ -74,3 +74,12 @@ node --check /home/ubuntu/repos/EDJAZZA/app.js
 - **المسار:** `process.env.DB_PATH || 'subscriptions.db'`، مع جدول `scheduled_pushes`، وupsert للاشتراكات حسب `endpoint`، ونقطة `PUT /api/schedule`، ومجدول داخلي كل 60 ثانية يبدأ بعد `app.listen`.
 - **التحقق:** الأمر `node --test backend/tests/*.test.js` نجح: AC1 وAC2 وAC3 وAC4 وAC5 وارتداد CHG-003، بإجمالي 6 اختبارات ناجحة و0 فاشلة.
 - **الحدود:** لم تتغير `app.js` أو `sw.js` أو `notification-manager.js` أو `index.html` أو `backend/package.json`، ولم يُرسل Push حقيقي. الأمر `node --test backend/tests/` غير مدعوم كمسار مجلد في Node.js 22؛ استُخدم نمط ملفات الاختبار الصريح أعلاه.
+
+
+## CHG-009-A2 — هوية الموظف وتشخيص أخطاء الخادم
+
+- **الحالة:** IMPLEMENTED
+- **التغيير:** أضيف `trust proxy` قابل للضبط عبر `TRUST_PROXY_HOPS` بقيمة افتراضية 1، مع الإبقاء على `applicationRateLimit` وقيمه ورسالة 429 كما هي.
+- **التشخيص:** تسجل معالجات الأخطاء اسم النقطة وحقول الخطأ المحددة فقط، ويسجل المجدول فشل الدورة وفشل الصف ببيانات تشخيصية محدودة دون endpoint أو auth أو p256dh أو الحمولة.
+- **الاختبار:** `backend/tests/chg009a2.test.js`، وتشغيل `node --test backend/tests/*.test.js` نجح بإجمالي 10 اختبارات و0 فشل، مع بقاء `backend/tests/chg009a.test.js` دون تعديل.
+- **الحد:** افتراض وسيط Railway واحد غير مثبت من المستودع وسيُتحقق منه في CHG-011.

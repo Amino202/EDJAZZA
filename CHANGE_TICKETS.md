@@ -394,3 +394,87 @@ git diff --check
 ### E5 — الحالة والحدود
 
 تم اختبار AC1 إلى AC5 فعليًا بقاعدة مؤقتة وإرسال وهمي، ولم يُرسل أي Push حقيقي إلى هاتف أو إلى بيئة إنتاج. لم تُعدّل واجهة العميل أو Service Worker أو مدير الإشعارات، ولم تُنفذ مصادقة جديدة أو معالجة تنبيه الرصيد القصير، ولم يُغيّر `trust proxy` أو منطق حد المعدل. لم يُعدّل `backend/package.json`؛ لذلك يبقى script الاختبار الفاشل عمدًا في نطاق CHG-013. الحالة التنفيذية `IMPLEMENTED`، وسيُسجل معرّف الالتزام بعد الالتزام ثم يُدفع فورًا وفق المواصفة.
+
+
+---
+## CHG-009-A2 — عدّ الطلبات لكل موظف على حدة
+
+- **الحالة:** IMPLEMENTED
+- **المواصفة:** APPROVED
+- **الملفات المتأثرة:** `backend/server.js`، `backend/tests/chg009a2.test.js`، `CHANGE_TICKETS.md`، `PROJECT_MAP.md`
+- **الملفات التي لم تتغير:** `backend/tests/chg009a.test.js`، `app.js`، `sw.js`، `notification-manager.js`، `index.html`، `backend/package.json`
+
+### E1 — مسوّغ التغيير والسبب الجذري
+
+كان `req.ip` يُحسب دون تفعيل `trust proxy`، لذلك لم يكن عدّاد المعدل يملك إعدادًا صريحًا لاستخراج عنوان الموظف الحقيقي خلف وسيط Railway. كما كانت معالجات الأخطاء تسجل رسائل عامة فقط، وكان خطأ دورة المجدول يُبتلع بصمت، ولم يكن فشل إرسال صف يسجل بيانات تشخيصية محدودة.
+
+### E2 — الآلية المنفذة
+
+أضيف قبل middleware:
+
+```javascript
+app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
+```
+
+لم تتغير دالة `applicationRateLimit` ولا قيمها: 100 طلبًا خلال 15 دقيقة، ولا رسالة 429. الافتراض التقني هو أن Railway تضع وسيطًا واحدًا أمام الخادم، ولذلك القيمة الافتراضية `1` مناسبة. هذا الافتراض لا يمكن إثباته من المستودع وحده، وسيُتحقق منه في CHG-011.
+
+أضيفت دالة تسجيل محدودة تكتب اسم النقطة وحقول الخطأ الموجودة فقط: `name` و`message` و`code` و`statusCode`. لا تسجل كائن الخطأ كاملًا ولا endpoint أو auth أو p256dh أو حمولة أو جسم طلب. استُبدلت رسائل الخطأ الداخلية المجرّدة في معالجات subscribe وschedule وsend-notification وbroadcast وunsubscribe وstats ومعالج الأخطاء العام. أزيل الابتلاع الصامت من دورة المجدول، وسُجل فشل إرسال الصف بمعرّف الصف و`kind` ورقم المحاولة و`statusCode` عند وجوده.
+
+لم تتغير رسائل العميل العامة أو CORS أو حد الجسم أو قيم حد المعدل.
+
+### E3 — الملفات ومعرّف التغيير
+
+الملفات:
+
+- `backend/server.js`
+- `backend/tests/chg009a2.test.js`
+- `CHANGE_TICKETS.md`
+- `PROJECT_MAP.md`
+
+سيُسجل معرّف commit النهائي بعد الالتزام. الـdiff السلوكي قبل الالتزام كان 23 إضافة و8 حذف في `backend/server.js`، مع اختبار جديد من 160 سطرًا، دون إعادة تنسيق غير متعلق بالتذكرة.
+
+### E4 — دليل الاختبار الفعلي
+
+الأمر المستخدم:
+
+```text
+node --test backend/tests/*.test.js
+```
+
+المخرجات الفعلية:
+
+```text
+✓ قاعدة البيانات جاهزة
+AC1 PASS {"idsEqual":true,"rows":1}
+AC2 PASS {"first":{"scheduled":1,"skipped":0},"second":{"scheduled":1,"skipped":0},"rows":[{"vacation_id":"vac-2","status":"scheduled"}]}
+AC3 PASS {"first":{"sent":1,"expired":0,"failed":0},"second":{"sent":0,"expired":0,"failed":0},"sends":1,"status":"sent"}
+AC4 PASS {"result":{"sent":0,"expired":1,"failed":0},"sends":0,"status":"expired"}
+AC5 PASS {"subscriptions":0,"scheduledPushes":0}
+✔ AC1: same endpoint is upserted and keeps one id
+✔ AC2: replacing a schedule leaves only the second list
+✔ AC3: due reminder is sent once and second cycle does not resend
+✔ AC4: reminder older than 24 hours expires without sending
+✔ AC5: 410 removes subscription and all its scheduled pushes
+CHG-003 PASS {"forbidden":403,"tooLarge":413,"invalid":400,"rateLimited":429}
+✔ CHG-003 regression: 403, 413, 429 and generic validation response remain enforced
+✓ قاعدة البيانات جاهزة
+AC1 PASS {"firstIpAfter100":429,"secondIp":200}
+✔ AC1: forwarded employee IPs have separate rate-limit buckets
+AC2 PASS {"fixedProxyIpAfter100":429}
+✔ AC2: spoofed left values cannot bypass the trusted final proxy address
+AC4 PASS {"status":500,"hasMessage":true,"hasCode":true,"leaksEndpoint":false}
+AC5 PASS {"hasId":true,"hasKind":true,"hasAttempt":true,"leaksEndpoint":false,"leaksPayload":false}
+✔ AC4: internal error logging excludes endpoint while preserving client generic response
+✔ AC5: scheduler failure log contains row metadata but no endpoint or payload
+ℹ tests 10
+ℹ pass 10
+ℹ fail 0
+```
+
+كما نجحت فحوص الصياغة و`git diff --check`، ولم تُعدّل `backend/tests/chg009a.test.js`.
+
+### E5 — الحدود والمخاطر المؤجلة
+
+لم يُرسل أي Push حقيقي ولم تُستخدم طلبات إنتاج. بقيت كل رسائل العميل العامة كما هي، وبقيت قيم CORS وحد الجسم وحد المعدل دون تغيير. لم يُعدّل التطبيق أو Service Worker أو مدير الإشعارات أو إعداد اختبار backend.
+
+القيمة الافتراضية `TRUST_PROXY_HOPS=1` مبنية على افتراض أن Railway تضع وسيطًا واحدًا أمام الخادم؛ هذا الافتراض غير مثبت من المستودع وسيُتحقق منه في CHG-011. إذا تغيّر عدد القفزات الموثوقة، يجب ضبط المتغير قبل الاعتماد التشغيلي.
